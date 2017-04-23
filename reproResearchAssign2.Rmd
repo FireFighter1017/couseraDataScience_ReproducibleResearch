@@ -1,0 +1,49 @@
+---
+title: "Effects of weather events in United States"
+output: html_document
+---
+Coursera.org  
+
+###Datascience Specialization - Reproducible Research Course Project #2  
+*By Pascal Bellerose*
+
+##Synopsis  
+This project involves exploring the [U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2). This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.  
+  
+The main goal of this research is to figure out which events are the most harmful in terms of population health and economic consequences.
+
+##Data Processing
+```{r echo=FALSE}
+  library(data.table)
+```
+###Loading of source data
+The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size.  
+
+```{r warning=FALSE, cache=TRUE, cache.path=}
+  ## Constants used for file handling
+  cstUrl = "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+  cstDataFile = "data/srcStormData.bz2"
+  
+  dir.create("data", showWarnings = FALSE)
+  download.file(cstUrl, cstDataFile)
+  dtRaw = read.csv(cstDataFile)
+
+```
+
+
+##Results
+
+`1-3 figures at least 1 plot`
+
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
