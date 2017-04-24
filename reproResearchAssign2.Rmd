@@ -13,37 +13,203 @@ This project involves exploring the [U.S. National Oceanic and Atmospheric Admin
 The main goal of this research is to figure out which events are the most harmful in terms of population health and economic consequences.
 
 ##Data Processing
-```{r echo=FALSE}
+```{r echo=FALSE, warning=FALSE, message=FALSE}
   library(data.table)
+  library(R.utils)
+  library(dplyr)
 ```
 ###Loading of source data
-The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size.  
+The data for this assignment come in the form of a comma-separated-value file that has been decompressed via the bzip2 algorithm to reduce processing time.  
 
-```{r warning=FALSE, cache=TRUE, cache.path=}
+```{r warning=FALSE}
   ## Constants used for file handling
-  cstUrl = "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
-  cstDataFile = "data/srcStormData.bz2"
+  cstDataFile = "./data/srcStormData"
   
-  dir.create("data", showWarnings = FALSE)
-  download.file(cstUrl, cstDataFile)
-  dtRaw = read.csv(cstDataFile)
+  bunzip2(paste(cstDataFile, ".bz2", sep=""), cstDataFile, overwrite = TRUE, remove = FALSE)
+  dtRaw = fread(cstDataFile, 
+                   header=TRUE, 
+                   stringsAsFactors = FALSE, 
+                   select = c("EVTYPE","FATALITIES","INJURIES","PROPDMG","PROPDMGEXP","CROPDMG","CROPDMGEXP"),
+                   na.strings="NA"
+               )
 
 ```
+###Data Preparation  
+  
+**Some data housekeeping first**  
+  
+Here are the different values available in the dataset for property and crops damage multipliers.
+```{r echo=FALSE, warning=FALSE}
+  sapply(split(dtRaw, dtRaw$PROPDMGEXP), NROW)
+  sapply(split(dtRaw, dtRaw$CROPDMGEXP), NROW)
+```
+  
+  
+Some multipliers were found to be invalid and some others need some case adjustements.  
+So we will set them to proper values.  
+  
+The ones showing `-, +, ?` are going to be resolved to `1` since there are no evidence of what they should be.  
+The letters will be converted to proper multipliers.  
+```{r echo=FALSE}
+  dtTidy = dtRaw                                                                    ##--Create Tidy Dataset
+```
+  
+Let's start with property damage:  
+```{r warning=FALSE, tidy=TRUE, cache=TRUE}
+  dtTidy$PROPDMGEXP = gsub("h", 100, dtTidy$PROPDMGEXP, ignore.case=TRUE)           ## Hundreds
+  dtTidy$PROPDMGEXP = gsub("k", 1000, dtTidy$PROPDMGEXP, ignore.case=TRUE)          ## Thousands
+  dtTidy$PROPDMGEXP = gsub("m", 1000000, dtTidy$PROPDMGEXP, ignore.case=TRUE)       ## Millions
+  dtTidy$PROPDMGEXP = gsub("b", 1000000000, dtTidy$PROPDMGEXP, ignore.case=TRUE)    ## Billions
+  dtTidy$PROPDMGEXP[is.na(as.numeric(dtTidy$PROPDMGEXP))] = 1                       ## Special characters and zeros
+```
 
+Now let's convert crops damage multipliers
+```{r warning=FALSE, tidy=TRUE, cache=TRUE}
+  dtTidy$CROPDMGEXP = gsub("h", 100,dtTidy$CROPDMGEXP, ignore.case=TRUE)            ## Hundreds
+  dtTidy$CROPDMGEXP = gsub("k", 1000, dtTidy$CROPDMGEXP, ignore.case=TRUE)          ## Thousands
+  dtTidy$CROPDMGEXP = gsub("m", 1000000,dtTidy$CROPDMGEXP, ignore.case=TRUE)        ## Millions
+  dtTidy$CROPDMGEXP = gsub("b", 1000000000,dtTidy$CROPDMGEXP, ignore.case=TRUE)     ## Billions
+  dtTidy$CROPDMGEXP[is.na(as.numeric(dtTidy$CROPDMGEXP))] = 1                       ## Special characters and zeros
+```
 
-##Results
+Multipliers are now cleaned and ready to be used.
+```{r echo=FALSE, warning=FALSE}
+  sapply(split(dtTidy, dtTidy$PROPDMGEXP), NROW)
+  sapply(split(dtTidy, dtTidy$CROPDMGEXP), NROW)
+```
+ 
+**Compile damage values**  
+We must apply multipliers `PROPDMGEXP` and `CROPDMGEXP` to damage value recorded 'PROPDMG/CROPDMG' to get the actual damage caused.  
+  
+Summary of damage values before we compile:
+```{r ECHO=FALSE}
+  summary(dtTidy$PROPDMG)
+  summary(dtTidy$CROPDMG)
+```
+  
+Compiling values:
+```{r cache=TRUE}
+  dtTidy$PROPDMG = dtTidy$PROPDMG * as.numeric(dtTidy$PROPDMGEXP)
+  dtTidy$CROPDMG = dtTidy$CROPDMG * as.numeric(dtTidy$CROPDMGEXP)
+```
+  
+Let's see that summary again...
+```{r echo=FALSE}
+  summary(dtTidy$PROPDMG)
+  summary(dtTidy$CROPDMG)
+```
+  
+    
+    
+**Human Casualties**  
+  
+As this summary show us, the data seems fairly clean already
+  
+Human Fatalities
+```{r echo=FALSE}
+  summary(dtTidy$FATALITIES)
+```
+  
+Human Injuries
+```{r echo=FALSE}
+  summary(dtTidy$INJURIES)
+```
+  
+    
+    
+**Events**  
+  
+Events can be coded using free text so data had to be cleaned.  
+Many entries were doubles using different case or naming.
+985 different entries in which many could not be coerced to standard values.
+```{r warning=FALSE, tidy=TRUE, cache=TRUE}
+  dtTidy$EVTYPE = trim(dtTidy$EVTYPE)
+  dtTidy[grep("\\?", dtTidy$EVTYPE)] = "NA"
+  dtTidy$EVTYPE = toupper(dtTidy$EVTYPE)
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"AVALAN")] = "AVALANCHE"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"BEACH ERO")] = "FLOOD"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"BLIZZARD")] = "BLIZZARD"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"BLOWING SNOW")] = "BLIZZARD"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"COASTAL S")] = "STORM SURGE"
+  dtTidy$EVTYPE[grep("FLOOD", toupper(dtTidy$EVTYPE))] = "FLOOD"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"DRY MICROBURST")] = "DRY MICROBURST"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"DRY")] = "DROUGHT"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"EXCESSIVE COLD")||startsWith(toupper(dtTidy$EVTYPE),"EXTREME COLD")||startsWith(toupper(dtTidy$EVTYPE),"EXTENDED COLD")] = "EXTREME COLD"
+  dtTidy$EVTYPE[grep("WIND.CHILL", toupper(dtTidy$EVTYPE))] = "HIGH WIND"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"FREEZING")] = "ICE STORM"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"FUNNEL")] = "HIGH WIND"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"HAIL")] = "HAIL"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"HEAVY SNOW")] = "HEAVY SNOW"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"HEAVY RAIN")] = "HEAVY RAIN"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"HVY RAIN")] = "HEAVY RAIN"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"HIGH WIND")] = "HIGH WIND"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"HURRICANE")] = "HURRICANE"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"DRY")] = "DROUGHT"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"LANDSLIDE")] = "HEAVY RAIN"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"LIGHTNING")] = "LIGHTNING"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"DRY")] = "DROUGHT"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"RAIN")] = "HEAVY RAIN"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"PROLONGED RAIN")] = "DROUGHT"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"RIP CUR")] = "RIP CURRENTS"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"SNOW")] = "HEAVY SNOW"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"STRONG WIND")] = "HIGH WIND"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"THUNDERSTORM WIND")] = "TSTM WIND"
+  dtTidy$EVTYPE[grep("TORNADO", toupper(dtTidy$EVTYPE))] = "TORNADO"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"TSTM WIND")] = "TSTM WIND"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"TROPICAL STORM")] = "TROPICAL STORM"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"TORRENTIAL RAIN")] = "HEAVY RAIN"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"VOLCANIC")] = "VOLCANIC ASH"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"WATERSPOUT")] = "WATERSPOUT"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"WIND")] = "HEAVY WIND"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"WINTER STORM")] = "WINTER STORM"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"WILD")] = "WILD/FOREST FIRE"
+  dtTidy$EVTYPE[startsWith(toupper(dtTidy$EVTYPE),"WND")] = "HEAVY WIND"
+```
+    
+  
+The number of different events is now down to 450 entries.  
+  
+  
+**Now that the data have been cleaned up, we can proceed with data analysis  **
+  
+    
+##Results  
+  
+  
+### What weather events are the most harmful with respect to population health?
 
-`1-3 figures at least 1 plot`
+For this question I need to aggregate the number of casualties --- `FATALITIES`, `INJURIES` --- by event type `EVTYPE`.
 
+```{r tidy=TRUE}
+  byEvent = group_by(dtTidy, EVTYPE)
+  topH = summarize(byEvent, Total=sum(FATALITIES+INJURIES, na.rm=TRUE))
+  topH = arrange(topH, desc(Total))[1:10,]
+```
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
+When drawing a simple Bar chart, it becomes obvious that tornados have the most impact on population health with over 97 000 casualties.  Thunderstorm winds come second with a little over 10 000 victims.
 ```{r}
-plot(cars)
+  barplot(topH$Total, 
+          names = topH$EVTYPE, 
+          main = "Top Casualties Weather Events", 
+          xlab="Events", 
+          ylab="Nbr. of casualties")
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+### What weather events are the most harmful in terms of economic cost of damages?
+
+For this question I need to summarize total cost of damages --- `PROPDMG`, `CROPDMG` --- by event type `EVTYPE`.
+```{r tidy=TRUE}
+  topE = summarize(byEvent, Total=sum(PROPDMG+CROPDMG, na.rm=TRUE))
+  topE = arrange(topE, desc(Total))[1:10,]
+```
+  
+When drawing a simple Bar chart, it becomes obvious that floods are have the greatest economic impact with over 180 B\$ in damage recorded.  Followed by hurricanes with 90 B\$ and tornados with 59 B\$
+```{r}
+  barplot(topE$Total, 
+          names = topE$EVTYPE, 
+          main = "Top Costly Weather Events", 
+          xlab="Events", 
+          ylab="Cost in USD")
+```
+
